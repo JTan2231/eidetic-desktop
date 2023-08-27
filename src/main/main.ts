@@ -19,6 +19,7 @@ import {
   getAllFiles,
   readDirectory,
   readFile,
+  getIndex,
 } from './serialization';
 
 class AppUpdater {
@@ -30,6 +31,8 @@ class AppUpdater {
 }
 
 let mainWindow: BrowserWindow | null = null;
+
+const index = getIndex();
 
 ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
@@ -53,6 +56,10 @@ ipcMain.on('get-all-files', (event) => {
 
 ipcMain.on('read-file', (event, filepath) => {
   event.reply('read-file-return', readFile(filepath));
+});
+
+ipcMain.on('index-query', (event, query: string) => {
+  event.reply('index-query-result', index.lookup(query));
 });
 
 if (process.env.NODE_ENV === 'production') {

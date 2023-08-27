@@ -9,6 +9,8 @@
   position: fixed;
   width: var(--w);
   height: calc(100vh - 16px);
+  overflow-y: auto;
+  overflow-x: hidden;
   flex-basis: var(--w);
 }
 
@@ -18,6 +20,17 @@
   left: var(--w);
   width: calc(100vw - var(--w));
   position: absolute;
+}
+
+.fileListContainer {
+  display: flex;
+  flex-direction: column;
+}
+
+.fileList {
+  display: flex;
+  flex-wrap: wrap;
+  flex-basis: 50%;
 }
 
 .fileItem {

@@ -4,8 +4,106 @@ import os from 'os';
 
 const META_PATH = path.join(os.homedir(), '.eidetic');
 const DIR_LIST = path.join(META_PATH, 'directory_list.json');
+const INDEX_PATH = path.join(META_PATH, 'index.json');
 
 const EXT_WHITELIST = ['md', 'txt'];
+
+// vocabulary of words mapped to the files that contain them
+export class Index {
+  map: Map<string, Set<any>>;
+
+  constructor(map: Map<string, Set<any>>) {
+    this.map = map;
+  }
+
+  lookup(query: string) {
+    const filenames = new Set<any>();
+    this.map.forEach((value: Set<any>, key: string) => {
+      if (key.includes(query)) {
+        for (const filename of value) {
+          // ?????
+          filenames.add(
+            JSON.stringify({
+              filepath: filename,
+              filename: filename.split('\\').pop().split('/').pop(),
+            })
+          );
+        }
+      }
+    });
+
+    return Array.from(filenames).map((f) => JSON.parse(f));
+  }
+
+  static build(filepaths: string[]) {
+    const map = new Map<string, Set<string>>();
+    for (const filepath of filepaths) {
+      console.log('filepath:', filepath);
+      const contents = readFile(filepath)!.replace(/(\r\n|\n|\r)/gm, '');
+      for (let word of contents.split(' ')) {
+        word = word.toLowerCase();
+        if (map.has(word)) {
+          const arr = map.get(word)!;
+          arr.add(filepath);
+
+          map.set(word, arr);
+        } else {
+          map.set(word, new Set<string>([filepath]));
+        }
+      }
+    }
+
+    const newIndex = new Index(map);
+    newIndex.saveToFile(INDEX_PATH);
+
+    return newIndex;
+  }
+
+  async saveToFile(filePath: string) {
+    const json = JSON.stringify(this);
+
+    try {
+      await fs.promises.writeFile(filePath, json);
+      console.log(`Data saved to ${filePath}`);
+    } catch (error) {
+      console.error(`Error saving data to ${filePath}:`, error);
+    }
+  }
+
+  toJSON() {
+    const jsonData: Record<string, string[]> = {};
+
+    this.map.forEach((set, key) => {
+      jsonData[key] = Array.from(set);
+    });
+
+    return jsonData;
+  }
+
+  static fromJSON(jsonData: Record<string, string[]>) {
+    const data = new Map<string, Set<string>>();
+
+    Object.entries(jsonData).forEach(([key, values]) => {
+      data.set(key, new Set(values));
+    });
+
+    return new Index(data);
+  }
+}
+
+export function getIndex() {
+  let index: Index;
+  if (fs.existsSync(INDEX_PATH)) {
+    index = Index.fromJSON(JSON.parse(readFile(INDEX_PATH)!));
+    console.log('Index loaded from', INDEX_PATH);
+  } else {
+    const files = getAllFiles().map((f) => f.filepath);
+    index = Index.build(files);
+    console.log('Index built and saved to', INDEX_PATH);
+  }
+
+  return index;
+}
 
 export function readDirectory(dirPath: string) {
   try {
@@ -84,7 +182,7 @@ export function getAllFiles() {
     fileList = fileList.concat(readDirectory(directory));
   }
 
-  return fileList;
+  return fileList.filter((file) => file.filename && file.filepath);
 }
 
 // adds the directory to the saved list
