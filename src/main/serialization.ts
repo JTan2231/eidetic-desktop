@@ -1,66 +1,140 @@
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import fs from "fs";
+import path from "path";
+import os from "os";
 
-const META_PATH = path.join(os.homedir(), '.eidetic');
-const DIR_LIST = path.join(META_PATH, 'directory_list.json');
-const INDEX_PATH = path.join(META_PATH, 'index.json');
+import { FileMeta } from "type_util/types";
 
-const EXT_WHITELIST = ['md', 'txt'];
+const META_PATH = path.join(os.homedir(), ".eidetic");
+const DIR_LIST = path.join(META_PATH, "directory_list.json");
+const INDEX_PATH = path.join(META_PATH, "index.json");
+
+const EXT_WHITELIST = ["md", "txt"];
+
+type IndexItem = {
+  pathCode: number;
+  wordStart: number;
+};
 
 // vocabulary of words mapped to the files that contain them
 export class Index {
-  map: Map<string, Set<any>>;
+  wordMap: Map<string, IndexItem[]>;
 
-  constructor(map: Map<string, Set<any>>) {
-    this.map = map;
+  // this is to cut down on file size in the index
+  pathEncoder: Map<string, number>;
+  pathDecoder: Map<number, string>;
+
+  constructor(
+    map: Map<string, IndexItem[]>,
+    pathEncoder: Map<string, number>,
+    pathDecoder: Map<number, string>
+  ) {
+    this.wordMap = map;
+    this.pathEncoder = pathEncoder;
+    this.pathDecoder = pathDecoder;
   }
 
   lookup(query: string) {
-    const filenames = new Set<any>();
-    this.map.forEach((value: Set<any>, key: string) => {
+    const filenames: FileMeta[] = []; // set of strings of FileMeta ????
+    this.wordMap.forEach((value: IndexItem[], key: string) => {
       if (key.includes(query)) {
-        for (const filename of value) {
-          // ?????
-          filenames.add(
-            JSON.stringify({
-              filepath: filename,
-              filename: filename.split('\\').pop().split('/').pop(),
-            })
-          );
+        for (const fileIndex of value) {
+          const filepath = this.pathDecoder.get(fileIndex.pathCode)!;
+          filenames.push({
+            filepath: filepath,
+            filename: filepath.split("\\").pop()!.split("/").pop()
+          } as FileMeta);
         }
       }
     });
 
-    return Array.from(filenames).map((f) => JSON.parse(f));
+    return filenames;
   }
 
   static build(filepaths: string[]) {
-    const map = new Map<string, Set<string>>();
+    const map = new Map<string, IndexItem[]>();
+    const pathEncoder = new Map<string, number>();
+    const pathDecoder = new Map<number, string>();
+
+    const addToMaps = (path: string) => {
+      if (!pathEncoder.has(path)) {
+        pathEncoder.set(path, pathEncoder.size);
+        pathDecoder.set(pathEncoder.get(path)!, path);
+      }
+    };
+
+    const getPathCode = (path: string) => {
+      if (pathEncoder.has(path)) {
+        return pathEncoder.get(path);
+      } else {
+        addToMaps(path);
+        return pathEncoder.get(path);
+      }
+    };
+
     for (const filepath of filepaths) {
-      console.log('filepath:', filepath);
-      const contents = readFile(filepath)!.replace(/(\r\n|\n|\r)/gm, '');
-      for (let word of contents.split(' ')) {
+      const contents = readFile(filepath)!
+        .replace(/(\r\n|\n|\r)/gm, "")
+        .toLowerCase();
+      for (let word of contents.split(" ")) {
         word = word.toLowerCase();
+        const pathCode = getPathCode(filepath);
+
         if (map.has(word)) {
-          const arr = map.get(word)!;
-          arr.add(filepath);
+          let arr = map.get(word)!;
+
+          const item = {
+            pathCode: pathCode,
+            wordStart: contents.indexOf(word)
+          } as IndexItem;
+
+          arr = arr.filter(
+            (i) =>
+              i.pathCode !== item.pathCode && i.wordStart !== item.wordStart
+          );
+
+          arr.push(item);
 
           map.set(word, arr);
         } else {
-          map.set(word, new Set<string>([filepath]));
+          map.set(word, [
+            {
+              pathCode,
+              wordStart: contents.indexOf(word)
+            } as IndexItem
+          ]);
         }
       }
     }
 
-    const newIndex = new Index(map);
+    const newIndex = new Index(map, pathEncoder, pathDecoder);
     newIndex.saveToFile(INDEX_PATH);
 
     return newIndex;
   }
 
+  wordMapToObject() {
+    const output = {} as any;
+    this.wordMap.forEach((value: IndexItem[], key: string) => {
+      output[key] = Array.from(value);
+    });
+
+    return output;
+  }
+
+  toString() {
+    return JSON.stringify(
+      {
+        wordMap: this.wordMapToObject(),
+        pathDecoder: Object.fromEntries(this.pathDecoder),
+        pathEncoder: Object.fromEntries(this.pathEncoder)
+      },
+      null,
+      2
+    );
+  }
+
   async saveToFile(filePath: string) {
-    const json = JSON.stringify(this);
+    const json = this.toString();
 
     try {
       await fs.promises.writeFile(filePath, json);
@@ -70,36 +144,27 @@ export class Index {
     }
   }
 
-  toJSON() {
-    const jsonData: Record<string, string[]> = {};
-
-    this.map.forEach((set, key) => {
-      jsonData[key] = Array.from(set);
-    });
-
-    return jsonData;
-  }
-
-  static fromJSON(jsonData: Record<string, string[]>) {
-    const data = new Map<string, Set<string>>();
+  static fromJSON(jsonData: Record<string, IndexItem[]>) {
+    const data = new Map<string, Set<IndexItem>>();
 
     Object.entries(jsonData).forEach(([key, values]) => {
       data.set(key, new Set(values));
     });
 
-    return new Index(data);
+    return null; //new Index(data);
   }
 }
 
 export function getIndex() {
   let index: Index;
+  const files = getAllFiles().map((f) => f.filepath);
   if (fs.existsSync(INDEX_PATH)) {
-    index = Index.fromJSON(JSON.parse(readFile(INDEX_PATH)!));
-    console.log('Index loaded from', INDEX_PATH);
-  } else {
-    const files = getAllFiles().map((f) => f.filepath);
+    //index = Index.fromJSON(JSON.parse(readFile(INDEX_PATH)!));
     index = Index.build(files);
-    console.log('Index built and saved to', INDEX_PATH);
+    console.log("Index loaded from", INDEX_PATH);
+  } else {
+    index = Index.build(files);
+    console.log("Index built and saved to", INDEX_PATH);
   }
 
   return index;
@@ -110,12 +175,12 @@ export function readDirectory(dirPath: string) {
     const contents = fs.readdirSync(dirPath);
     const items = contents
       .filter((item) => {
-        const split = item.split('.');
+        const split = item.split(".");
         return split.length > 1 && EXT_WHITELIST.includes(split[1]);
       })
       .map((item) => ({
         filepath: path.join(dirPath, item),
-        filename: item,
+        filename: item
       }));
     return items;
   } catch (error: any) {
@@ -127,33 +192,33 @@ function createMetaPath() {
   if (!fs.existsSync(META_PATH)) {
     try {
       fs.mkdirSync(META_PATH);
-      console.log(META_PATH + ' created successfully.');
+      console.log(META_PATH + " created successfully.");
     } catch (err) {
-      console.error('Error creating folder:', err);
+      console.error("Error creating folder:", err);
     }
   } else {
-    console.log('Folder already exists.');
+    console.log("Folder already exists.");
   }
 }
 
 function createDirList() {
   if (!fs.existsSync(DIR_LIST)) {
     try {
-      fs.writeFileSync(DIR_LIST, '[]');
-      console.log(DIR_LIST + ' created successfully.');
+      fs.writeFileSync(DIR_LIST, "[]");
+      console.log(DIR_LIST + " created successfully.");
     } catch (err) {
-      console.error('Error creating file:', err);
+      console.error("Error creating file:", err);
     }
   } else {
-    console.log(DIR_LIST + ' already exists.');
+    console.log(DIR_LIST + " already exists.");
   }
 }
 
 export function readFile(filepath: string) {
   try {
-    return fs.readFileSync(filepath, 'utf-8');
+    return fs.readFileSync(filepath, "utf-8");
   } catch (err) {
-    console.error('Error reading JSON file:', err);
+    console.error("Error reading JSON file:", err);
   }
 }
 
@@ -162,16 +227,16 @@ function readJSON(filepath: string) {
     const content = readFile(filepath)!;
     return JSON.parse(content);
   } catch (err) {
-    console.error('Error reading JSON file:', err);
+    console.error("Error reading JSON file:", err);
   }
 }
 
 function writeJSON(filepath: string, data: string[]) {
   try {
-    fs.writeFileSync(filepath, JSON.stringify(data, null, 2), 'utf-8'); // Convert data to a formatted JSON string
-    console.log(filepath + ' written to file successfully.');
+    fs.writeFileSync(filepath, JSON.stringify(data, null, 2), "utf-8"); // Convert data to a formatted JSON string
+    console.log(filepath + " written to file successfully.");
   } catch (err) {
-    console.error('Error writing to file:', err);
+    console.error("Error writing to file:", err);
   }
 }
 
@@ -199,7 +264,7 @@ export function addDirectory(dirPath: string) {
 
   const fileList = getAllFiles();
 
-  console.log('updated file list:', fileList);
+  console.log("updated file list:", fileList);
 
   return fileList;
 }

@@ -1,10 +1,11 @@
-import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
-import { ipcRenderer } from 'electron';
-import { useRef, RefObject, useEffect, useState } from 'react';
+import { MemoryRouter as Router, Routes, Route } from "react-router-dom";
+import { ipcRenderer } from "electron";
+import { useRef, RefObject, useEffect, useState } from "react";
 
-import { MarkdownRenderer } from './components/markdown_renderer';
+import { MarkdownRenderer } from "./components/markdown_renderer";
+import { FileMeta } from "type_util/types";
 
-import './styles/directory.css';
+import "./styles/directory.css";
 
 function Testing() {
   const directoryInput = useRef() as RefObject<HTMLInputElement>;
@@ -14,21 +15,22 @@ function Testing() {
     savedDirectories.push(directory);
     setSavedDirectories(savedDirectories);
 
-    ipcRenderer.send('add-directory', directory);
+    ipcRenderer.send("add-directory", directory);
   };
 
   const enterCheck = (e: any) => {
     if (e.keyCode === 13 || e.which === 13) {
       buttonClick();
-      return;
     }
   };
 
-  const [currentFiles, setCurrentFilesUnwrapped] = useState([] as any[]);
-  const [filteredFiles, setFilteredFiles] = useState([] as any[]);
-  const [contentFilteredFiles, setContentFilteredFiles] = useState([] as any[]);
+  const [currentFiles, setCurrentFilesUnwrapped] = useState([] as FileMeta[]);
+  const [filteredFiles, setFilteredFiles] = useState([] as FileMeta[]);
+  const [contentFilteredFiles, setContentFilteredFiles] = useState(
+    [] as FileMeta[]
+  );
   const [savedDirectories, setSavedDirectories] = useState([] as string[]);
-  const [currentView, setCurrentView] = useState('');
+  const [currentView, setCurrentView] = useState("");
 
   const sanitizeFileList = (files: any[]) => {
     return files.filter((f) => f.filename && f.filename.length > 0);
@@ -44,49 +46,47 @@ function Testing() {
   };
 
   useEffect(() => {
-    ipcRenderer.on('directory-contents', (_, contents) => {
+    ipcRenderer.on("directory-contents", (_, contents) => {
       setCurrentFiles(contents);
     });
 
-    ipcRenderer.on('updated-filelist', (_, contents) => {
+    ipcRenderer.on("updated-filelist", (_, contents) => {
       setCurrentFiles(contents);
     });
 
-    ipcRenderer.on('receive-all-files', (_, contents) => {
+    ipcRenderer.on("receive-all-files", (_, contents) => {
       setCurrentFiles(contents);
     });
 
-    ipcRenderer.on('read-file-return', (_, contents) => {
+    ipcRenderer.on("read-file-return", (_, contents) => {
       setCurrentView(contents);
     });
 
     // assumes that filenames and filepaths come from the same place
     // (which they should)
-    ipcRenderer.on('index-query-result', contentFilteredCallback);
+    ipcRenderer.on("index-query-result", contentFilteredCallback);
 
-    ipcRenderer.send('get-all-files');
+    ipcRenderer.send("get-all-files");
   }, []);
 
   const fileClick = (filepath: string) => {
     return () => {
-      ipcRenderer.send('read-file', filepath);
+      ipcRenderer.send("read-file", filepath);
     };
   };
 
   const searchKeyDown = () => {
-    const query = (document.getElementById('searchInput') as HTMLInputElement)!
+    const query = (document.getElementById("searchInput") as HTMLInputElement)!
       .value;
 
-    let filteredFiles = [];
+    let filteredFiles: FileMeta[] = [];
     if (query && query.length > 0) {
-      filteredFiles = currentFiles.filter(
-        (f) => f.filename && f.filename.includes(query)
-      );
+      filteredFiles = currentFiles.filter((f) => f.filename?.includes(query));
     }
 
     setFilteredFiles(filteredFiles);
 
-    ipcRenderer.send('index-query', query);
+    ipcRenderer.send("index-query", query);
   };
 
   // this is wildly inefficient
@@ -96,20 +96,24 @@ function Testing() {
         (value, index, array) =>
           array.map((f) => f.filename).indexOf(value.filename) === index
       )
-      .map((f) => (
-        <div className="fileItem" onClick={fileClick(f.filepath)}>
+      .map((f, index: number) => (
+        <div
+          key={`${index * 1}`}
+          className="fileItem"
+          onClick={fileClick(f.filepath)}
+        >
           {f.filename}
         </div>
       ));
   };
 
   const getSearchValue = () => {
-    if (document.getElementById('searchInput') as HTMLInputElement) {
-      return (document.getElementById('searchInput') as HTMLInputElement)
+    if (document.getElementById("searchInput") as HTMLInputElement) {
+      return (document.getElementById("searchInput") as HTMLInputElement)
         ?.value;
     }
 
-    return '';
+    return "";
   };
 
   return (
@@ -137,9 +141,9 @@ function Testing() {
               <div className="fileList">{mapFiles(filteredFiles)}</div>
               <div
                 style={{
-                  borderTop: '1px solid black',
-                  height: '1px',
-                  width: '100%',
+                  borderTop: "1px solid black",
+                  height: "1px",
+                  width: "100%"
                 }}
               />
               <b>File content matches:</b>
