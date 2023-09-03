@@ -9,7 +9,7 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
-import { app, BrowserWindow, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 import MenuBuilder from './menu';
@@ -20,7 +20,15 @@ import {
   readDirectory,
   readFile,
   getIndex,
+  readBinaryFile,
 } from './serialization';
+import { FILE_TYPES, ViewMeta } from '../type_util/types';
+import { EmbeddingIndex } from './embedding_index';
+
+const PDFJS = require('pdfjs-dist');
+
+PDFJS.GlobalWorkerOptions.workerSrc =
+  require('pdfjs-dist/build/pdf.worker').url;
 
 class AppUpdater {
   constructor() {
@@ -33,6 +41,7 @@ class AppUpdater {
 let mainWindow: BrowserWindow | null = null;
 
 const index = getIndex();
+const embeddingIndex = new EmbeddingIndex(null, []);
 
 ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
@@ -55,11 +64,48 @@ ipcMain.on('get-all-files', (event) => {
 });
 
 ipcMain.on('read-file', (event, filepath) => {
-  event.reply('read-file-return', readFile(filepath));
+  const meta = {} as any;
+  meta.fileType = path.basename(filepath).split('.').pop();
+
+  if (meta.fileType === FILE_TYPES.pdf) {
+    meta.content = filepath;
+  } else {
+    meta.content = readFile(filepath);
+  }
+
+  event.reply('read-file-return', meta as ViewMeta);
 });
 
 ipcMain.on('index-query', (event, query: string) => {
   event.reply('index-query-result', index.lookup(query));
+});
+
+ipcMain.on('get-pdf-contents', (event, filepath: string) => {
+  const contents = readBinaryFile(filepath)!;
+  const buffer = new Uint8Array(contents).buffer;
+
+  PDFJS.getDocument(buffer).promise.then((doc: any) => {
+    console.log(doc);
+    event.reply('get-pdf-contents-result', doc);
+  });
+});
+
+ipcMain.on('build-embeddings', (event) => {
+  embeddingIndex.build(getAllFiles().map((f) => f.filepath));
+});
+
+ipcMain.on('open-directory-dialog', (event) => {
+  dialog
+    .showOpenDialog(mainWindow!, {
+      properties: ['openDirectory'],
+    })
+    .then((res) => {
+      if (!res.canceled) {
+        const directory = res.filePaths[0];
+        const updatedFileList = addDirectory(directory);
+        event.reply('updated-filelist', updatedFileList);
+      }
+    });
 });
 
 if (process.env.NODE_ENV === 'production') {

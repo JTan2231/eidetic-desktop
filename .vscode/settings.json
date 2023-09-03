@@ -3,6 +3,7 @@
         "javascript",
         "javascriptreact",
         "html",
+        "typescript",
         "typescriptreact"
     ],
     "javascript.validate.enable": false,

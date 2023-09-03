@@ -1,36 +1,19 @@
-import { MemoryRouter as Router, Routes, Route } from "react-router-dom";
-import { ipcRenderer } from "electron";
-import { useRef, RefObject, useEffect, useState } from "react";
+import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
+import { ipcRenderer } from 'electron';
+import { useRef, RefObject, useEffect, useState } from 'react';
 
-import { MarkdownRenderer } from "./components/markdown_renderer";
-import { FileMeta } from "type_util/types";
+import { Renderer } from './components/renderer';
+import { FileMeta, ViewMeta } from 'type_util/types';
 
-import "./styles/directory.css";
+import './styles/directory.css';
 
 function Testing() {
-  const directoryInput = useRef() as RefObject<HTMLInputElement>;
-  const buttonClick = () => {
-    const directory = directoryInput.current!.value;
-
-    savedDirectories.push(directory);
-    setSavedDirectories(savedDirectories);
-
-    ipcRenderer.send("add-directory", directory);
-  };
-
-  const enterCheck = (e: any) => {
-    if (e.keyCode === 13 || e.which === 13) {
-      buttonClick();
-    }
-  };
-
   const [currentFiles, setCurrentFilesUnwrapped] = useState([] as FileMeta[]);
   const [filteredFiles, setFilteredFiles] = useState([] as FileMeta[]);
   const [contentFilteredFiles, setContentFilteredFiles] = useState(
     [] as FileMeta[]
   );
-  const [savedDirectories, setSavedDirectories] = useState([] as string[]);
-  const [currentView, setCurrentView] = useState("");
+  const [currentView, setCurrentView] = useState({} as ViewMeta);
 
   const sanitizeFileList = (files: any[]) => {
     return files.filter((f) => f.filename && f.filename.length > 0);
@@ -40,43 +23,42 @@ function Testing() {
     setCurrentFilesUnwrapped(sanitizeFileList(files));
   };
 
-  const contentFilteredCallback = (_: any, contents: any[]) => {
-    console.log(currentFiles, contents);
+  const contentFilteredCallback = (_: any, contents: FileMeta[]) => {
     setContentFilteredFiles(contents);
   };
 
   useEffect(() => {
-    ipcRenderer.on("directory-contents", (_, contents) => {
+    ipcRenderer.on('directory-contents', (_, contents) => {
       setCurrentFiles(contents);
     });
 
-    ipcRenderer.on("updated-filelist", (_, contents) => {
+    ipcRenderer.on('updated-filelist', (_, contents) => {
       setCurrentFiles(contents);
     });
 
-    ipcRenderer.on("receive-all-files", (_, contents) => {
+    ipcRenderer.on('receive-all-files', (_, contents) => {
       setCurrentFiles(contents);
     });
 
-    ipcRenderer.on("read-file-return", (_, contents) => {
+    ipcRenderer.on('read-file-return', (_, contents) => {
       setCurrentView(contents);
     });
 
     // assumes that filenames and filepaths come from the same place
     // (which they should)
-    ipcRenderer.on("index-query-result", contentFilteredCallback);
+    ipcRenderer.on('index-query-result', contentFilteredCallback);
 
-    ipcRenderer.send("get-all-files");
+    ipcRenderer.send('get-all-files');
   }, []);
 
   const fileClick = (filepath: string) => {
     return () => {
-      ipcRenderer.send("read-file", filepath);
+      ipcRenderer.send('read-file', filepath);
     };
   };
 
   const searchKeyDown = () => {
-    const query = (document.getElementById("searchInput") as HTMLInputElement)!
+    const query = (document.getElementById('searchInput') as HTMLInputElement)!
       .value;
 
     let filteredFiles: FileMeta[] = [];
@@ -86,11 +68,23 @@ function Testing() {
 
     setFilteredFiles(filteredFiles);
 
-    ipcRenderer.send("index-query", query);
+    ipcRenderer.send('index-query', query);
+  };
+
+  const prepContext = (context: string, start: number, length: number) => {
+    const end = start + length;
+
+    return (
+      <div className="fileItemContext">
+        {context.substring(0, start)}
+        <b className="fileItemKeyword">{context.substring(start, end)}</b>
+        {context.substring(end, context.length)}
+      </div>
+    );
   };
 
   // this is wildly inefficient
-  const mapFiles = (files: any[]) => {
+  const mapFiles = (files: FileMeta[]) => {
     return files
       .filter(
         (value, index, array) =>
@@ -102,32 +96,29 @@ function Testing() {
           className="fileItem"
           onClick={fileClick(f.filepath)}
         >
-          {f.filename}
+          <div>{f.filename}</div>
+          {f.context && f.keywordIndex !== undefined
+            ? prepContext(f.context, f.keywordIndex, f.keywordLength!)
+            : ''}
         </div>
       ));
   };
 
   const getSearchValue = () => {
-    if (document.getElementById("searchInput") as HTMLInputElement) {
-      return (document.getElementById("searchInput") as HTMLInputElement)
+    if (document.getElementById('searchInput') as HTMLInputElement) {
+      return (document.getElementById('searchInput') as HTMLInputElement)
         ?.value;
     }
 
-    return "";
+    return '';
   };
 
   return (
     <div className="windowContainer">
       <div className="directory">
-        <div>
-          <input
-            ref={directoryInput}
-            type="text"
-            placeholder="Target directory"
-            onKeyDown={enterCheck}
-          />
-          <button onClick={buttonClick}>Add directory</button>
-        </div>
+        <button onClick={() => ipcRenderer.send('build-embeddings')}>
+          Build embeddings
+        </button>
         <input
           id="searchInput"
           type="text"
@@ -141,9 +132,9 @@ function Testing() {
               <div className="fileList">{mapFiles(filteredFiles)}</div>
               <div
                 style={{
-                  borderTop: "1px solid black",
-                  height: "1px",
-                  width: "100%"
+                  borderTop: '1px solid black',
+                  height: '1px',
+                  width: '100%',
                 }}
               />
               <b>File content matches:</b>
@@ -152,9 +143,18 @@ function Testing() {
           ) : (
             mapFiles(currentFiles)
           )}
+          <div>
+            <button
+              onClick={() => {
+                ipcRenderer.send('open-directory-dialog');
+              }}
+            >
+              Add directory
+            </button>
+          </div>
         </div>
       </div>
-      <MarkdownRenderer contents={currentView} />
+      <Renderer meta={currentView} />
     </div>
   );
 }

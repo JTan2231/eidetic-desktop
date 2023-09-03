@@ -17,7 +17,7 @@ const configuration: webpack.Configuration = {
     rules: [
       {
         test: /\.[jt]sx?$/,
-        exclude: /node_modules/,
+        exclude: [/node_modules/, /pdfjs-dist\/build\/pdf\.worker\.js$/],
         use: {
           loader: 'ts-loader',
           options: {
@@ -27,6 +27,13 @@ const configuration: webpack.Configuration = {
               module: 'esnext',
             },
           },
+        },
+      },
+      {
+        test: /pdfjs-dist\/build\/pdf\.worker\.js$/,
+        type: 'asset/resource',
+        generator: {
+          filename: 'static/chunks/[name].[hash][ext]',
         },
       },
     ],

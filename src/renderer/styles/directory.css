@@ -16,10 +16,15 @@
 
 .markdownRenderer {
   --w: calc((100vw - 16px) * 0.3 + 1rem);
+
   overflow: auto;
   left: var(--w);
   width: calc(100vw - var(--w));
   position: absolute;
+}
+
+.rendererContent {
+  padding: 1rem 4rem 0 4rem;
 }
 
 .fileListContainer {
@@ -44,4 +49,13 @@
 
 .fileItem:hover {
   background-color: rgba(32, 32, 32, 0.2);
+}
+
+.fileItemContext {
+  font-size: 0.75rem;
+  padding: 0.25rem;
+}
+
+.fileItemKeyword {
+  background-color: yellowgreen;
 }
