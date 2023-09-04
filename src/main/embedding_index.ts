@@ -7,7 +7,8 @@ import {
   readFile,
   writeFile,
 } from './serialization';
-import { FileMeta } from 'type_util/types';
+import { FileMeta, fileMetaFromPath } from '../type_util/types';
+import { assert } from 'console';
 
 const DEFAULT_DIRECTORY = path.join(META_PATH, 'embeddings');
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -56,6 +57,17 @@ class Embedding {
   }
 }
 
+function dot(e1: number[], e2: number[]) {
+  assert(e1.length === e2.length);
+
+  let sum = 0;
+  for (let i = 0; i < e1.length; i++) {
+    sum += e1[i] * e2[i];
+  }
+
+  return sum;
+}
+
 type EmbeddingFileMeta = {
   path: string;
   source: string;
@@ -76,9 +88,11 @@ async function getEmbedding(contents: string) {
     }),
   })
     .then((res) => {
+      console.log('getEmbedding response:', res.status, res.statusText);
       return res.json();
     })
     .then((res) => {
+      console.log('getEmbedding JSON response:', res);
       embeddingData = res.data[0].embedding;
     });
 
@@ -137,6 +151,9 @@ export class EmbeddingIndex {
 
   load(filenames: FileMeta[]) {
     const embeddingFiles = readDirectory(this.directory);
+    const files: string[] = [];
+
+    console.log('LOADING EMBEDDING INDEX at', this.directory);
 
     const arrayContains = (query: string) => {
       for (const file of embeddingFiles) {
@@ -149,12 +166,39 @@ export class EmbeddingIndex {
     };
 
     for (const file of filenames) {
-      const contents = readFile(file.filepath)!;
+      const contents = readFile(file.filepath)!.substring(0, 10);
       const candidateFilepath = buildFilename(this.directory, contents, 0);
       if (arrayContains(candidateFilepath)) {
-        this.files.push(candidateFilepath);
+        console.log(`${candidateFilepath} loaded`);
+        files.push(candidateFilepath);
       }
     }
+
+    this.files = files;
+  }
+
+  rank(query: string) {
+    type EmbeddingRank = {
+      dot: number;
+      embed: EmbeddingFileMeta;
+    };
+
+    return getEmbedding(query).then((queryEmbedding) => {
+      const ranking = [] as EmbeddingRank[];
+
+      for (const filepath of this.files) {
+        const embeddingMeta = JSON.parse(
+          readFile(filepath)!
+        ) as EmbeddingFileMeta;
+        const dotValue = dot(queryEmbedding, embeddingMeta.embedding.data);
+
+        ranking.push({ dot: dotValue, embed: embeddingMeta });
+      }
+
+      ranking.sort((a, b) => b.dot - a.dot);
+
+      return ranking.map((rank) => fileMetaFromPath(rank.embed.source));
+    });
   }
 
   clean() {

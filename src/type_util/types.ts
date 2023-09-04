@@ -1,3 +1,5 @@
+import path from 'path';
+
 export type FileMeta = {
   filepath: string;
   filename: string;
@@ -5,6 +7,13 @@ export type FileMeta = {
   keywordIndex?: number; // relative to context
   keywordLength?: number;
 };
+
+export function fileMetaFromPath(filepath: string) {
+  return {
+    filepath,
+    filename: path.basename(filepath),
+  } as FileMeta;
+}
 
 export type ViewMeta = {
   content: string;

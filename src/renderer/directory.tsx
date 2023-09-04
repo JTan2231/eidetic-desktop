@@ -1,6 +1,6 @@
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import { ipcRenderer } from 'electron';
-import { useRef, RefObject, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Renderer } from './components/renderer';
 import { FileMeta, ViewMeta } from 'type_util/types';
@@ -14,6 +14,7 @@ function Testing() {
     [] as FileMeta[]
   );
   const [currentView, setCurrentView] = useState({} as ViewMeta);
+  const [rankedFiles, setRankedFiles] = useState([] as FileMeta[]);
 
   const sanitizeFileList = (files: any[]) => {
     return files.filter((f) => f.filename && f.filename.length > 0);
@@ -42,6 +43,10 @@ function Testing() {
 
     ipcRenderer.on('read-file-return', (_, contents) => {
       setCurrentView(contents);
+    });
+
+    ipcRenderer.on('search-embeddings-result', (_, rankings) => {
+      setRankedFiles(rankings);
     });
 
     // assumes that filenames and filepaths come from the same place
@@ -125,8 +130,47 @@ function Testing() {
           placeholder="Search files"
           onKeyUp={searchKeyDown}
         />
+        <input
+          id="embeddingSearchInput"
+          type="text"
+          placeholder="Embedding search"
+          onKeyUp={() => {
+            const input = document.getElementById(
+              'embeddingSearchInput'
+            )! as HTMLInputElement;
+            if (input.value.length === 0) {
+              setRankedFiles([]);
+            }
+          }}
+        />
+        <button
+          onClick={() =>
+            ipcRenderer.send(
+              'search-embeddings',
+              (
+                document.getElementById(
+                  'embeddingSearchInput'
+                )! as HTMLInputElement
+              ).value
+            )
+          }
+        >
+          Search embeddings
+        </button>
         <div className="fileListContainer">
-          {filteredFiles.length || getSearchValue().length ? (
+          {rankedFiles.length ? (
+            <>
+              <b>Embedding ranking:</b>
+              <div className="fileList">{mapFiles(rankedFiles)}</div>
+              <div
+                style={{
+                  borderTop: '1px solid black',
+                  height: '1px',
+                  width: '100%',
+                }}
+              />
+            </>
+          ) : filteredFiles.length || getSearchValue().length ? (
             <>
               <b>Filename matches:</b>
               <div className="fileList">{mapFiles(filteredFiles)}</div>

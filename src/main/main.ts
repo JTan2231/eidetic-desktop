@@ -9,6 +9,7 @@
  * `./src/main.js` using webpack. This gives us some performance wins.
  */
 import path from 'path';
+import * as fs from 'fs';
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
@@ -42,6 +43,7 @@ let mainWindow: BrowserWindow | null = null;
 
 const index = getIndex();
 const embeddingIndex = new EmbeddingIndex(null, []);
+embeddingIndex.load(getAllFiles());
 
 ipcMain.on('ipc-example', async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
@@ -92,6 +94,12 @@ ipcMain.on('get-pdf-contents', (event, filepath: string) => {
 
 ipcMain.on('build-embeddings', (event) => {
   embeddingIndex.build(getAllFiles().map((f) => f.filepath));
+});
+
+ipcMain.on('search-embeddings', async (event, query: string) => {
+  const rankings = await embeddingIndex.rank(query);
+
+  event.reply('search-embeddings-result', rankings);
 });
 
 ipcMain.on('open-directory-dialog', (event) => {

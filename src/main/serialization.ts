@@ -8,7 +8,7 @@ export const META_PATH = path.join(os.homedir(), '.eidetic');
 const DIR_LIST = path.join(META_PATH, 'directory_list.json');
 const INDEX_PATH = path.join(META_PATH, 'index.json');
 
-const EXT_WHITELIST = ['md', 'txt'];
+const EXT_WHITELIST = ['md', 'txt', 'json'];
 
 type IndexItem = {
   pathCode: string;
